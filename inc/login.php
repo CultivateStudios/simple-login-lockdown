@@ -103,6 +103,7 @@ class Simple_Login_Lockdown
         add_action('wp_login_failed', array($this, 'failed_login'));
         add_action('login_init', array($this, 'maybe_kill_login'));
         add_action('wp_login', array($this, 'successful_login'));
+        add_filter('wp_authenticate_user', array($this, 'check_username'), 10, 3);
 
         load_plugin_textdomain(
             'simple-login-lockdown',
@@ -124,7 +125,7 @@ class Simple_Login_Lockdown
      * @uses    add_option
      * @return  void
      */
-    public function failed_login()
+    public function failed_login($username)
     {
         if(!($ip = self::get_ip()))
             return;
@@ -132,7 +133,43 @@ class Simple_Login_Lockdown
         if(apply_filters('simple_login_lockdown_allow_ip', false, $ip))
             return;
 
-        self::inc_count($ip);
+        self::inc_ip_count($ip);
+        self::inc_user_count($username);
+    }
+
+    /**
+     * Check login to see if the username is currently locked
+     *
+     * @since 1.2
+     * @access public
+     * @return void
+    **/
+    public function check_username($user)
+    {
+
+        $username = $user->get('user_login');
+
+        $die = false;
+
+        if(($count = self::get_count($username)) && $count > absint(self::opt('user_limit', 5)))
+        {
+            self::delete_count($username);
+            self::set_lockdown($username);
+            $die = true;
+            do_action('simple_login_lockdown_count_reached', $username);
+        }
+        elseif(self::is_locked_down($username))
+        {
+            $die = true;
+            do_action('simple_login_lockdown_attempt', $username);
+        }
+
+        if(apply_filters('simple_login_lockdown_should_die', $die, $username))
+        {
+            $user = new  WP_Error('denied', __('Too many login attemps for that user! Please take a break and try again later', 'simple-login-lockdown'));
+        }
+
+        return $user;
     }
 
     /**
@@ -149,7 +186,7 @@ class Simple_Login_Lockdown
             return;
 
         $die = false;
-        if(($count = self::get_count($ip)) && $count > absint(self::opt('limit', 5)))
+        if(($count = self::get_count($ip)) && $count > absint(self::opt('ip_limit', 5)))
         {
             self::delete_count($ip);
             self::set_lockdown($ip);
@@ -179,13 +216,15 @@ class Simple_Login_Lockdown
      * @access  public
      * @return  void
      */
-    function successful_login()
+    function successful_login($username)
     {
         if(!($ip = self::get_ip()))
             return;
 
         self::delete_count($ip);
+        self::delete_count($username);
         self::clear_lockdown($ip);
+        self::clear_lockdown($username);
     }
 
     /********** Internals **********/
@@ -255,17 +294,17 @@ class Simple_Login_Lockdown
     }
 
     /**
-     * Get the current login count for a given IP.
-     *
+     * Get the current login count for a given IP or username.
+     * 
      * @since   1.0
      * @access  private
      * @uses    get_transient
-     * @param   string $ip The IP address
+     * @param   string $identifier The IP/Username
      * @return  int
      */
-    private static function get_count($ip)
+    private static function get_count($identifier)
     {
-        if($c = get_transient(self::get_key($ip)))
+        if($c = get_transient(self::get_key($identifier)))
             return absint($c);
         return 0;
     }
@@ -280,12 +319,32 @@ class Simple_Login_Lockdown
      * @uses    apply_filters
      * @return  int The incremented count
      */
-    private static function inc_count($ip)
+    private static function inc_ip_count($ip)
     {
         $c = self::get_count($ip) + 1;
 
         set_transient(self::get_key($ip), $c,
             apply_filters('simple_login_lockdown_timer', 60*60, $ip));
+
+        return $c;
+    }
+
+    /**
+     * Increment the count login attemp count for a given $user
+     *
+     * @since   1.0
+     * @access  private
+     * @param   string $user
+     * @uses    set_transient
+     * @uses    apply_filters
+     * @return  int The incremented count
+     */
+    private static function inc_user_count($username)
+    {
+        $c = self::get_count($username) + 1;
+
+        set_transient(self::get_key($username), $c,
+            apply_filters('simple_login_lockdown_timer', 60*60, $username));
 
         return $c;
     }
@@ -298,9 +357,9 @@ class Simple_Login_Lockdown
      * @uses    delete_transient
      * @return  void
      */
-    private static function delete_count($ip)
+    private static function delete_count($identifier)
     {
-        delete_transient(self::get_key($ip));
+        delete_transient(self::get_key($identifier));
     }
 
     /**
@@ -316,51 +375,51 @@ class Simple_Login_Lockdown
     }
 
     /**
-     * Lock down the login for a given IP.
+     * Lock down the login for a given IP/Username.
      *
      * @since   1.0
      * @access  private
      * @uses    set_transient
-     * @param   string $ip
+     * @param   string $identifier
      * @return  void
      */
-    private static function set_lockdown($ip)
+    private static function set_lockdown($identifier)
     {
         $len = absint(self::opt('time', 60));
 
         if(!$len || $len < 0)
             $len = 60;
 
-        set_transient(self::get_lockdown_key($ip), true,
+        set_transient(self::get_lockdown_key($identifier), true,
             apply_filters('simple_login_lockdown_length', $len * 60));
     }
 
     /**
-     * Is the IP address locked down?
+     * Is the IP/Userame locked down?
      *
      * @since   1.0
      * @access  private
      * @uses    get_transient
-     * @param   string $ip
+     * @param   string $identifier
      * @return  boolean
      */
-    private static function is_locked_down($ip)
+    private static function is_locked_down($identifier)
     {
-        return (bool) get_transient(self::get_lockdown_key($ip));
+        return (bool) get_transient(self::get_lockdown_key($identifier));
     }
 
     /**
-     * Clear the lockdown for a given $ip
+     * Clear the lockdown for a given $identifier
      *
      * @since   1.0
      * @access  private
      * @uses    delete_transient
-     * @param   string $ip
+     * @param   string $identifier
      * @return  void
      */
-    private static function clear_lockdown($ip)
+    private static function clear_lockdown($identifier)
     {
-        delete_transient(self::get_lockdown_key($ip));
+        delete_transient(self::get_lockdown_key($identifier));
     }
 
     /**

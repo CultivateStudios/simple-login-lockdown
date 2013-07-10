@@ -140,12 +140,22 @@ class Simple_Login_Lockdown_Admin extends Simple_Login_Lockdown
         );
 
         add_settings_field(
-            self::SETTING . '[limit]',
-            __('Login Attempt Limit', 'simple-login-lockdown'),
+            self::SETTING . '[ip_limit]',
+            __('Login Attempt Per IP Limit', 'simple-login-lockdown'),
             array($this, 'attempts_cb'),
             $this->page,
             self::SECTION,
-            array('label_for' => self::SETTING . '[limit]', 'key' => 'limit')
+            array('label_for' => self::SETTING . '[ip_limit]', 'key' => 'ip_limit')
+        );
+
+
+        add_settings_field(
+            self::SETTING . '[user_limit]',
+            __('Login Attempt Per User Limit', 'simple-login-lockdown'),
+            array($this, 'attempts_cb'),
+            $this->page,
+            self::SECTION,
+            array('label_for' => self::SETTING . '[user_limit]', 'key' => 'user_limit')
         );
 
         add_settings_field(
@@ -197,7 +207,7 @@ class Simple_Login_Lockdown_Admin extends Simple_Login_Lockdown
     {
         $out = array();
 
-        foreach (array('time', 'limit') as $k) {
+        foreach (array('time', 'ip_limit', 'user_limit') as $k) {
             if (!empty($in[$k])) {
                 $out[$k] = absint($in[$k]);
             }
@@ -250,6 +260,7 @@ class Simple_Login_Lockdown_Admin extends Simple_Login_Lockdown
         }
         echo '</select>';
     }
+
     
     /**
      * The callback for the time limit settings field
