@@ -101,7 +101,6 @@ class Simple_Login_Lockdown
     public function _setup()
     {
         add_action('wp_login_failed', array($this, 'failed_login'));
-        add_action('login_init', array($this, 'maybe_kill_login'));
         add_action('wp_login', array($this, 'successful_login'));
         add_filter('wp_authenticate_user', array($this, 'check_username'), 10, 3);
 
@@ -127,13 +126,6 @@ class Simple_Login_Lockdown
      */
     public function failed_login($username)
     {
-        if(!($ip = self::get_ip()))
-            return;
-
-        if(apply_filters('simple_login_lockdown_allow_ip', false, $ip))
-            return;
-
-        self::inc_ip_count($ip);
         self::inc_user_count($username);
     }
 
@@ -166,47 +158,10 @@ class Simple_Login_Lockdown
 
         if(apply_filters('simple_login_lockdown_should_die', $die, $username))
         {
-            $user = new  WP_Error('denied', __('Too many login attemps for that user! Please take a break and try again later', 'simple-login-lockdown'));
+            $user = new  WP_Error('denied', __('<b>ERROR</b>: Too many login attemps for that user! Please take a break and try again later', 'simple-login-lockdown'));
         }
 
         return $user;
-    }
-
-    /**
-     * Kills the login page via wp_die if login attempt allowance has been 
-     * exceeded or the IP address is locked down.
-     * 
-     * @since   0.1
-     * @access  public
-     * @return  void
-     */
-    public function maybe_kill_login()
-    {
-        if(!($ip = self::get_ip()))
-            return;
-
-        $die = false;
-        if(($count = self::get_count($ip)) && $count > absint(self::opt('ip_limit', 5)))
-        {
-            self::delete_count($ip);
-            self::set_lockdown($ip);
-            $die = true;
-            do_action('simple_login_lockdown_count_reached', $ip);
-        }
-        elseif(self::is_locked_down($ip))
-        {
-            $die = true;
-            do_action('simple_login_lockdown_attempt', $ip);
-        }
-
-        if(apply_filters('simple_login_lockdown_should_die', $die, $ip))
-        {
-            wp_die(
-                __('Too many login attemps from one IP address! Please take a break and try again later', 'simple-login-lockdown'),
-                __('Too many login attemps', 'simple-login-lockdown'),
-                array('response' => apply_filters('simple_login_lockdown_response', 403))
-            );
-        }
     }
 
     /**
@@ -218,88 +173,17 @@ class Simple_Login_Lockdown
      */
     function successful_login($username)
     {
-        if(!($ip = self::get_ip()))
-            return;
-
-        self::delete_count($ip);
         self::delete_count($username);
-        self::clear_lockdown($ip);
         self::clear_lockdown($username);
     }
 
-    /********** Internals **********/
-
     /**
-     * Get the $_SERVER['REMOTE_ADDR'] value.  Uses apply_filters
-     * so plugins/themes can hook into change the value if they're using a 
-     * load balancer or behind some other proxy.
-     * 
-     * @since   0.1
-     * @access  private
-     * @uses    apply_filters
-     * @return  string|bool The IP if it's there, false if not.
-     */
-    private static function get_ip()
-    {
-        $ip = false;
-
-        if ($_ip = self::get_proxy_ip()) {
-            $ip = $_ip;
-        } elseif (isset($_SERVER['REMOTE_ADDR'])) { 
-            $ip = $_SERVER['REMOTE_ADDR'];
-        }
-
-        return apply_filters('simple_login_lockdown_ip', $ip);
-    }
-
-    /**
-     * If we're trusting proxy data, get the X-Forwarded-For header (if present)
-     * and return it's IP.
-     *
-     * @since   0.3
-     * @access  private
-     * @uses    apply_filters
-     * @return  false|string
-     * @static
-     */
-    private static function get_proxy_ip()
-    {
-        $ip = false;
-
-        $h = apply_filters('simple_login_lockdown_proxy_ip_header', 'HTTP_X_FORWARDED_FOR');
-
-        if (self::trust_proxy_data() && !empty($_SERVER[$h])) {
-            $ip_arr = array_map('trim', explode(',', $_SERVER[$h]));
-            $ip = array_shift($ip_arr);
-        }
-
-        return apply_filters('simple_login_lockdown_proxy_ip', $ip);
-    }
-
-    /**
-     * Do we trust proxy data?
-     *
-     * @since   0.3
-     * @access  private
-     * @uses    apply_filters
-     * @return  boolean
-     * @static
-     */
-    private static function trust_proxy_data()
-    {
-        return apply_filters(
-            'simple_login_lockdown_trust_proxy',
-            'on' === static::opt('trust_proxy', 'off')
-        );
-    }
-
-    /**
-     * Get the current login count for a given IP or username.
+     * Get the current login count for a given username.
      * 
      * @since   1.0
      * @access  private
      * @uses    get_transient
-     * @param   string $identifier The IP/Username
+     * @param   string $identifier The Username
      * @return  int
      */
     private static function get_count($identifier)
@@ -307,26 +191,6 @@ class Simple_Login_Lockdown
         if($c = get_transient(self::get_key($identifier)))
             return absint($c);
         return 0;
-    }
-
-    /**
-     * Increment the count login attemp count for a given $ip
-     *
-     * @since   1.0
-     * @access  private
-     * @param   string $ip
-     * @uses    set_transient
-     * @uses    apply_filters
-     * @return  int The incremented count
-     */
-    private static function inc_ip_count($ip)
-    {
-        $c = self::get_count($ip) + 1;
-
-        set_transient(self::get_key($ip), $c,
-            apply_filters('simple_login_lockdown_timer', 60*60, $ip));
-
-        return $c;
     }
 
     /**
@@ -395,7 +259,7 @@ class Simple_Login_Lockdown
     }
 
     /**
-     * Is the IP/Userame locked down?
+     * Is the Userame locked down?
      *
      * @since   1.0
      * @access  private

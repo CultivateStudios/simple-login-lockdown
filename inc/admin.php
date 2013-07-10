@@ -140,16 +140,6 @@ class Simple_Login_Lockdown_Admin extends Simple_Login_Lockdown
         );
 
         add_settings_field(
-            self::SETTING . '[ip_limit]',
-            __('Login Attempt Per IP Limit', 'simple-login-lockdown'),
-            array($this, 'attempts_cb'),
-            $this->page,
-            self::SECTION,
-            array('label_for' => self::SETTING . '[ip_limit]', 'key' => 'ip_limit')
-        );
-
-
-        add_settings_field(
             self::SETTING . '[user_limit]',
             __('Login Attempt Per User Limit', 'simple-login-lockdown'),
             array($this, 'attempts_cb'),
@@ -165,15 +155,6 @@ class Simple_Login_Lockdown_Admin extends Simple_Login_Lockdown
             $this->page,
             self::SECTION,
             array('label_for' => self::SETTING . '[time]', 'key' => 'time')
-        );
-
-        add_settings_field(
-            self::SETTING . '[trust_proxy]',
-            __('Trust Proxy Data', 'simple-login-lockdown'),
-            array($this, 'trust_proxy_cb'),
-            $this->page,
-            self::SECTION,
-            array('label_for' => self::SETTING . '[trust_proxy]', 'key' => 'trust_proxy')
         );
     }
 
